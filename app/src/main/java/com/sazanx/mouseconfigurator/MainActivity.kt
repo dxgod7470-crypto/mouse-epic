@@ -375,33 +375,36 @@ class MouseStabilizerService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Mouse Stabilizer Active")
-            .setContentText("Global input precision model active across all apps.")
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                1,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(1, notification)
+            .setContentText("Global in    private fun initShizukuShell() {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                process = Runtime.getRuntime().exec("sh")
+                outputStream = process?.outputStream
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
-    private fun initShizukuShell() {
+    private fun sendShizukuCommand(cmd: String) {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                    process = Shizuku.newProcess(arrayOf("sh"), null, null)
-                    outputStream = process?.outputStream
+                if (outputStream != null) {
+                    outputStream?.write(cmd.toByteArray())
+                    outputStream?.flush()
+                } else {
+                    // Fallback execution using Shizuku API directly
+                    val p = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd.trim()))
+                    p.waitFor()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
+    }
+put precision model active across all apps.")
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            
     }
 
     fun processAndInjectInput(rawDeltaX: Float, rawDeltaY: Float) {
