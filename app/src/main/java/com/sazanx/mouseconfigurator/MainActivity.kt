@@ -51,6 +51,18 @@ class MainActivity : Activity() {
     private var windowStart = 0L
     private val shizukuPermissionCode = 1004
 
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        updateShizukuStatus()
+    }
+
+    private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        updateShizukuStatus()
+    }
+
+    private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
+        updateShizukuStatus()
+    }
+
     private fun isShizukuRunning(): Boolean {
         return try {
             Shizuku.pingBinder()
@@ -67,8 +79,25 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun updateShizukuStatus() {
+        runOnUiThread {
+            if (::status.isInitialized) {
+                status.text = when {
+                    !isShizukuRunning() -> "Shizuku: not running"
+                    isShizukuGranted() -> "Shizuku: running • granted"
+                    else -> "Shizuku: running • permission required"
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
+        Shizuku.addBinderDeadListener(binderDeadListener)
+        Shizuku.addRequestPermissionResultListener(permissionResultListener)
+
         try {
             buildUi()
             checkSystemOverlayPermission()
@@ -79,6 +108,18 @@ class MainActivity : Activity() {
             tv.setPadding(32, 32, 32, 32)
             setContentView(tv)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateShizukuStatus()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Shizuku.removeBinderReceivedListener(binderReceivedListener)
+        Shizuku.removeBinderDeadListener(binderDeadListener)
+        Shizuku.removeRequestPermissionResultListener(permissionResultListener)
     }
 
     private fun checkSystemOverlayPermission() {
@@ -236,7 +277,7 @@ class MainActivity : Activity() {
 
         setContentView(root)
         showConfig()
-        status.text = if (isShizukuRunning()) "Shizuku: running" else "Shizuku: not running"
+        updateShizukuStatus()
     }
 
     private fun addHeader(p: LinearLayout, s: String) {
@@ -280,6 +321,13 @@ class MainActivity : Activity() {
     private fun startMouseService() {
         if (!isShizukuRunning()) {
             Toast.makeText(this, "Shizuku must be running to enable global injection!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!isShizukuGranted()) {
+            try {
+                Shizuku.requestPermission(shizukuPermissionCode)
+            } catch (_: Throwable) {}
+            Toast.makeText(this, "Please grant Shizuku permission first!", Toast.LENGTH_SHORT).show()
             return
         }
         val intent = Intent(this, MouseStabilizerService::class.java)
