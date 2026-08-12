@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
@@ -157,16 +158,20 @@ class MainActivity : Activity() {
             addSeek(body, "Acceleration strength", 0f, 1f, cfg.accel) { cfg.accel = it; updateServiceConfig() }
             addSeek(body, "Smoothing / filter", 0f, 1f, cfg.smoothing) { cfg.smoothing = it; updateServiceConfig() }
             addHeader(body, "Response curve")
-            val rg = RadioGroup(this)
+            val rg = RadioGroup(this@MainActivity)
             listOf("Linear", "Soft", "Windows-like", "Aggressive").forEach { name ->
-                val r = RadioButton(this).apply { text = name; setTextColor(Color.WHITE); isChecked = name == cfg.curve }
+                val r = RadioButton(this@MainActivity).apply { 
+                    text = name
+                    setTextColor(Color.WHITE)
+                    isChecked = (name == cfg.curve) 
+                }
                 r.setOnClickListener { cfg.curve = name; updateServiceConfig() }
                 rg.addView(r)
             }
             body.addView(rg)
             addSeek(body, "Scroll speed", 0.25f, 3f, cfg.scroll) { cfg.scroll = it; updateServiceConfig() }
             addSwitch(body, "Invert Y", cfg.invertY) { cfg.invertY = it; updateServiceConfig() }
-            val note = TextView(this).apply {
+            val note = TextView(this@MainActivity).apply {
                 text = "Note: Global injection runs cross-app using the background Shizuku pipeline."
                 setTextColor(Color.LTGRAY); textSize = 12f; setPadding(0, 16, 0, 16)
             }
@@ -176,12 +181,12 @@ class MainActivity : Activity() {
         fun showTest() {
             body.removeAllViews()
             addHeader(body, "Raw input tester")
-            val info = TextView(this).apply {
+            val info = TextView(this@MainActivity).apply {
                 text = "Move the mouse over this screen. Events reaching this app appear below."
                 setTextColor(Color.WHITE)
             }
             body.addView(info)
-            log = TextView(this).apply {
+            log = TextView(this@MainActivity).apply {
                 text = "Waiting for mouse/keyboard…"
                 setTextColor(Color.rgb(180, 220, 255))
                 textSize = 12f
@@ -199,7 +204,7 @@ class MainActivity : Activity() {
                     .filterNotNull()
                     .filter { dev -> (dev.sources and (InputDevice.SOURCE_MOUSE or InputDevice.SOURCE_KEYBOARD)) != 0 }
                     .forEach { dev ->
-                        val t = TextView(this).apply {
+                        val t = TextView(this@MainActivity).apply {
                             text = "${dev.name} (ID ${dev.id}) - sources 0x${Integer.toHexString(dev.sources)}"
                             setTextColor(Color.WHITE); textSize = 14f; setPadding(0, 8, 0, 8)
                         }
@@ -219,7 +224,7 @@ class MainActivity : Activity() {
             }
             addText(body, sh)
             if (isShizukuRunning() && !isShizukuGranted()) {
-                val b = Button(this).apply { text = "Request Shizuku permission" }
+                val b = Button(this@MainActivity).apply { text = "Request Shizuku permission" }
                 b.setOnClickListener { try { Shizuku.requestPermission(shizukuPermissionCode) } catch (_: Throwable) {} }
                 body.addView(b)
             }
@@ -306,14 +311,12 @@ class MainActivity : Activity() {
                 events = 0; windowStart = now; r
             } else 0
             
-            // Acquire raw relative inputs if available
             val rawX = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) e.getAxisValue(MotionEvent.AXIS_RELATIVE_X) else e.getAxisValue(MotionEvent.AXIS_X)
             val rawY = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) e.getAxisValue(MotionEvent.AXIS_RELATIVE_Y) else e.getAxisValue(MotionEvent.AXIS_Y)
             val wheel = e.getAxisValue(MotionEvent.AXIS_VSCROLL)
             val dt = if (lastNs == 0L) 0.0 else (now - lastNs) / 1_000_000.0
             lastNs = now
 
-            // Forward to active service injector
             MouseStabilizerService.instance?.processAndInjectInput(rawX, rawY)
 
             if (::log.isInitialized) {
@@ -377,14 +380,24 @@ class MouseStabilizerService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
-        startForeground(1, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                1,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     private fun initShizukuShell() {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                process = Runtime.getRuntime().exec("sh")
-                outputStream = process?.outputStream
+                if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                    process = Shizuku.newProcess(arrayOf("sh"), null, null)
+                    outputStream = process?.outputStream
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -395,16 +408,13 @@ class MouseStabilizerService : Service() {
         serviceScope.launch(Dispatchers.Default) {
             val cfg = currentConfig
             
-            // Adjust sensitivity and inverted axis logic
             var adjustedX = rawDeltaX * cfg.pointer * cfg.x
             var adjustedY = rawDeltaY * cfg.pointer * cfg.y * (if (cfg.invertY) -1f else 1f)
 
-            // Apply Exponential Moving Average filter
             val alpha = (1.0f - cfg.smoothing).coerceIn(0.05f, 1.0f)
             smoothedX = (alpha * adjustedX) + ((1f - alpha) * smoothedX)
             smoothedY = (alpha * adjustedY) + ((1f - alpha) * smoothedY)
 
-            // Sub-Pixel Fractional Accumulation
             val totalX = smoothedX + remainderX
             val totalY = smoothedY + remainderY
 
@@ -414,7 +424,6 @@ class MouseStabilizerService : Service() {
             remainderX = totalX - injectX
             remainderY = totalY - injectY
 
-            // Send processed delta input across all apps
             if (injectX != 0 || injectY != 0) {
                 sendShizukuCommand("input swipe 0 0 $injectX $injectY 1\n")
             }
