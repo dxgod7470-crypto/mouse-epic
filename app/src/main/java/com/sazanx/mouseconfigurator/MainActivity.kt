@@ -375,7 +375,23 @@ class MouseStabilizerService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Mouse Stabilizer Active")
-            .setContentText("Global in    private fun initShizukuShell() {
+            .setContentText("Global input precision model active across all apps.")
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                1,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(1, notification)
+        }
+    }
+
+    private fun initShizukuShell() {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 process = Runtime.getRuntime().exec("sh")
@@ -384,27 +400,6 @@ class MouseStabilizerService : Service() {
                 e.printStackTrace()
             }
         }
-    }
-
-    private fun sendShizukuCommand(cmd: String) {
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                if (outputStream != null) {
-                    outputStream?.write(cmd.toByteArray())
-                    outputStream?.flush()
-                } else {
-                    // Fallback execution using Shizuku API directly
-                    val p = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd.trim()))
-                    p.waitFor()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-put precision model active across all apps.")
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            
     }
 
     fun processAndInjectInput(rawDeltaX: Float, rawDeltaY: Float) {
@@ -434,13 +429,15 @@ put precision model active across all apps.")
     }
 
     private fun sendShizukuCommand(cmd: String) {
-        try {
-            outputStream?.let {
-                it.write(cmd.toByteArray())
-                it.flush()
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                outputStream?.let {
+                    it.write(cmd.toByteArray())
+                    it.flush()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
