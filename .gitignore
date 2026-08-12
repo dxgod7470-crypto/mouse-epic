@@ -1,0 +1,12 @@
+.gradle/
+<<<<<<< HEAD
+build/
+**/build/
+*.apk
+*.aab
+gradle-*-bin.zip
+=======
+**/build/
+gradle-*.zip
+local.properties
+>>>>>>> origin/main
